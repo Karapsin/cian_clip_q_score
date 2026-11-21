@@ -1,0 +1,111 @@
+{
+  "iep": {
+    "interior": [
+      "A photo of the inside of an apartment, showing a bedroom, livingroom, closets, kitchen, living room, bathroom, or toilet.",
+      "A photo taken inside a house or apartment."
+    ],
+    "view": [
+      "A photo taken from a window or balcony, looking out or down over the city, neighborhood, or landscape.",
+      "A photo of the view from an apartment window, showing the outdoors beyond and below.",
+      "A photo taken from a balcony, looking down or outward at the scenery, often over a railing."
+    ],
+    "street": [
+      "A photo of the street outside the apartment building, showing a park, green space, playground, or the building's facade.",
+      "An outdoor photo taken at street level, showing the neighborhood around the building, such as a garden, trees, or the entrance.",
+      "A photo of the street scene near the apartment, showing nearby buildings, a park, a playground, or the front of the building."
+    ],
+    "floor_plan": [
+      "A floor plan of an apartment, showing a top-down layout of the rooms, walls, and doors.",
+      "A diagram of an apartment's layout drawn from above, with labeled rooms and dimensions.",
+      "A top-down drawing of an apartment's floor plan."
+    ],
+    "common": [
+      "Section / Entrance of an Apartment Building: The shared lobby, staircase, and inner hallway used by residents to enter a specific section of a block of flats."
+    ]
+  },
+  "interior_old": {
+    "pos": [
+      "This is a photo of a luxurious apartment."
+    ],
+    "mid": [
+      "This is a photo of a ordinary apartment."
+    ],
+    "neg": [
+      "This is a photo of a dilapidated apartment."
+    ]
+  },
+  "interior_recommended": {
+    "pos": [
+      "This is a photo of an apartment with premium finishes and designer furniture.",
+      "An interior photo of a high-end apartment.",
+      "A real estate listing photo of a modern designer apartment.",
+      "A photo of a room in an elegant apartment.",
+      "This is a photo of a premium apartment."
+    ],
+    "mid": [
+      "A photo of a well-kept apartment interior.",
+      "This is a photo of a simple but tidy apartment.",
+      "This is a photo of a regular apartment.",
+      "A real estate listing photo of an ordinary apartment.",
+      "This is a photo of a clean apartment with an old-fashioned Soviet-era interior in good condition."
+    ],
+    "neg": [
+      "This is a photo of an apartment with peeling paint and damaged walls.",
+      "This is a photo of an apartment in poor condition needing renovation.",
+      "An interior photo of a shabby apartment.",
+      "A real estate listing photo of a poorly maintained apartment.",
+      "This is a photo of a worn-out apartment."
+    ],
+    "unfinished": [
+      "A photo of an unfinished apartment with bare concrete walls and no interior finishing.",
+      "A photo of a new apartment sold without renovation, with a concrete floor and exposed pipes.",
+      "A photo of an apartment under construction with block partitions and wiring on the floor."
+    ]
+  },
+  "exterior": {
+    "low": [
+      "Industrial rooftops, garages or a construction site outside the window.",
+      "A worn apartment staircase with cracked steps, damaged walls and poor lighting.",
+      "A window looking directly onto a brick wall, utility boxes or a messy rooftop.",
+      "A neglected muddy path and broken playground beside an apartment building.",
+      "A dense highway, construction site or industrial zone outside an apartment window."
+    ],
+    "mid": [
+      "A maintained older Russian apartment building with a plain but tidy entrance.",
+      "A dated clean communal stairwell with mailboxes and worn but serviceable tiles.",
+      "An ordinary balcony view of trees, roads and neighboring residential towers.",
+      "A photo of an ordinary maintained apartment building exterior.",
+      "Trees and neighboring apartment buildings seen through an ordinary window."
+    ],
+    "high": [
+      "A high-end contemporary residential complex with elegant glass architecture.",
+      "A designer apartment lobby with premium stone finishes and modern lighting.",
+      "A beautifully landscaped courtyard in a premium residential complex.",
+      "A panoramic river, forest or famous city skyline view from a luxury apartment.",
+      "A stylish renovated lobby in a luxury apartment building."
+    ]
+  },
+  "plan": {
+    "low": [
+      "A very small narrow studio apartment floor plan with a tiny kitchenette.",
+      "A floor plan with tiny bedrooms, a very small kitchen and a cramped bathroom.",
+      "A small outdated apartment layout with tiny kitchen and narrow passageways.",
+      "A tiny irregular apartment floor plan with cramped sleeping and cooking areas.",
+      "A minimal compact apartment plan with a very small kitchen and bathroom."
+    ],
+    "mid": [
+      "A practical one-bedroom apartment floor plan with a separate kitchen and bathroom.",
+      "An ordinary two-room apartment layout with functional room arrangement.",
+      "A standard studio floor plan with a sleeping area, kitchen and bathroom.",
+      "A typical Soviet-era two-bedroom apartment layout with modest room sizes.",
+      "A simple one-bedroom floor plan with a separate bathroom and kitchen."
+    ],
+    "high": [
+      "A luxury Moscow apartment layout with a terrace and walk-in wardrobes.",
+      "A large premium apartment layout with multiple bathrooms.",
+      "A large well-designed apartment floor plan with separated bedrooms and generous rooms.",
+      "A luxury apartment layout with multiple bathrooms, dressing rooms and a terrace.",
+      "An expansive modern apartment plan with a large living area and premium features."
+    ]
+  }
+}
