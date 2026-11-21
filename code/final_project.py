@@ -19,7 +19,7 @@ STAGES_TO_RUN = [
 ]
 FRESH_RUN = False
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 INPUTS_PATH = PROJECT_ROOT / "inputs"
 OUTPUTS_PATH = PROJECT_ROOT / "outputs"
 PHOTO_BASE_URL = "http://192.168.31.149:8765/"
