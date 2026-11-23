@@ -7,6 +7,7 @@ import pandas as pd
 from .image_quality import METRIC_COLUMNS
 from .photo_io import KEY
 
+PHOTO_OUTPUTS = Path("outputs") / "clip_and_photo_stats"
 ALL_STAGES = ["iep", "interior_scores", "photo_quality", "exterior_plan_scores"]
 IEP_CLASSES = ["interior", "view", "street", "floor_plan", "common"]
 IEP_SIMILARITY_COLUMNS = [f"{name}_similarity" for name in IEP_CLASSES]

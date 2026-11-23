@@ -15,7 +15,7 @@ from tqdm.auto import tqdm
 
 from .clip_utils import build_prototypes, embed_images, embed_prompts, load_model, similarities
 from .image_quality import METRIC_COLUMNS, calculate_metrics
-from .parquet_io import ALL_STAGES, completed_batches, parts_directory, remove_parts, save_batch
+from .parquet_io import ALL_STAGES, PHOTO_OUTPUTS, completed_batches, parts_directory, remove_parts, save_batch
 from .photo_io import download_batch, list_remote_photos, load_iep_photos
 
 CLIP_STAGES = {"iep", "interior_scores", "exterior_plan_scores"}
@@ -43,7 +43,7 @@ def prepare_photo_frame(project_root: Path, stages: list[str], remote_root: str,
     stages = selected_stages(stages)
     if "iep" in stages:
         return list_remote_photos(remote_root, ssh_target)
-    iep_path = project_root / "outputs" / "photo_classifications.parquet"
+    iep_path = project_root / PHOTO_OUTPUTS / "photo_classifications.parquet"
     if not iep_path.exists():
         raise FileNotFoundError(f"{iep_path} is required. Include 'iep' in STAGES_TO_RUN for the first run.")
     return load_iep_photos(iep_path, stages)

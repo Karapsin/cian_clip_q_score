@@ -2,13 +2,17 @@ import asyncio
 import json
 import os
 import random
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import torch
 
-from utils.parquet_io import write_stage_outputs
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT / "code"))
+
+from utils.parquet_io import PHOTO_OUTPUTS, write_stage_outputs
 from utils.pipeline import prepare_photo_frame, run_pipeline, selected_stages
 
 STAGES_TO_RUN = [
@@ -19,9 +23,8 @@ STAGES_TO_RUN = [
 ]
 FRESH_RUN = False
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
 INPUTS_PATH = PROJECT_ROOT / "inputs"
-OUTPUTS_PATH = PROJECT_ROOT / "outputs"
+OUTPUTS_PATH = PROJECT_ROOT / PHOTO_OUTPUTS
 PHOTO_BASE_URL = "http://192.168.31.149:8765/"
 REMOTE_ROOT = "/srv/images/cian_project_photos"
 SSH_TARGET = "kardinal@192.168.31.149"
