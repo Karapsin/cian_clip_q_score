@@ -1,4 +1,4 @@
-"""Asking-price premiums by construction decade on matched photo samples."""
+"""Asking-price premiums by construction decade on the interior-photo sample."""
 
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
@@ -23,16 +23,10 @@ SERIES = (
     ("Property and location controls", "#1B598A", "o", -0.12, ()),
     ("Same controls + interior Q", "#B34429", "s", 0.12, VARIANTS["A"]),
 )
-QUALITY_FEATURES = (*VARIANTS["A"], "exterior_polarity_adj", "plan_polarity_adj")
-COMPARISON_SERIES = (
-    ("Property and location controls", "#1B598A", "o", -0.18, ()),
-    ("+ interior Q", "#B34429", "s", 0.0, VARIANTS["A"]),
-    ("+ interior, exterior and floor-plan Q", "#246C58", "^", 0.18, QUALITY_FEATURES),
-)
 
 
-def decade_sample(interior_listings, market, photo_features=VARIANTS["A"]):
-    train, _ = price_split(interior_listings, market, photo_features)
+def decade_sample(interior_listings, market):
+    train, _ = price_split(interior_listings, market, VARIANTS["A"])
     sample = remove_unused_categories(train.dropna(subset=["buildYear"]).copy())
     years = sample["buildYear"].astype(int)
     labels = ((years // 10) * 10).astype(str) + "s"
@@ -55,7 +49,7 @@ def decade_premiums(sample, photo_features):
     return estimates
 
 
-def draw_market(axis, sample, title, series):
+def draw_market(axis, sample, title):
     positions = np.arange(len(DECADES))
     reference_index = DECADES.index(REFERENCE)
     comparison_positions = np.delete(positions, reference_index)
@@ -63,7 +57,7 @@ def draw_market(axis, sample, title, series):
     axis.grid(axis="y", color="#DCE2E8", linewidth=0.65)
     axis.axhline(0, color="#687585", linewidth=0.9, linestyle=(0, (4, 3)))
     axis.scatter(reference_index, 0, marker="D", color="#687585", s=15, zorder=5)
-    for _, color, marker, offset, features in series:
+    for _, color, marker, offset, features in SERIES:
         estimate = decade_premiums(sample, features).drop(index=REFERENCE)
         axis.errorbar(
             comparison_positions + offset, estimate["premium"],
@@ -80,13 +74,8 @@ def draw_market(axis, sample, title, series):
     axis.tick_params(axis="x", length=0, pad=6, labelsize=7.8)
 
 
-def export_decade_figure(directory, listings, *, include_exterior_and_plan=False):
-    if include_exterior_and_plan:
-        number, series, features = "A3", COMPARISON_SERIES, QUALITY_FEATURES
-        sample_label = "Shared sample with all three Q-scores"
-    else:
-        number, series, features = "A2", SERIES, VARIANTS["A"]
-        sample_label = "Interior-photo sample"
+def export_decade_figure(directory, listings):
+    number = "A2"
     interior_listings = listings_for_variant(listings, "A")
     with plt.rc_context({
         "font.family": "DejaVu Sans", "font.size": 9, "pdf.fonttype": 42,
@@ -98,16 +87,16 @@ def export_decade_figure(directory, listings, *, include_exterior_and_plan=False
         title = f"Figure {number_label(number)}. {FIGURE_TITLES[number]}"
         figure.text(0.09, 0.95, title, fontsize=15, fontweight="bold", va="top")
         figure.text(
-            0.09, 0.876, f"{sample_label} · Relative to the 2000s · 95% confidence intervals",
+            0.09, 0.876, "Interior-photo sample · Relative to the 2000s · 95% confidence intervals",
             fontsize=8.7, color="#425468", va="top",
         )
         handles = [
             Line2D([], [], marker=marker, color=color, linestyle="none", markersize=4.8, label=label)
-            for label, color, marker, _, _ in series
+            for label, color, marker, _, _ in SERIES
         ]
         figure.legend(handles=handles, loc="center left", bbox_to_anchor=(0.09, 0.79),
-                      borderaxespad=0, frameon=False, ncol=len(series), columnspacing=1.6, handlelength=1)
+                      borderaxespad=0, frameon=False, ncol=2, columnspacing=1.6, handlelength=1)
         for axis, (market, title) in zip(axes, MARKETS.items(), strict=True):
-            draw_market(axis, decade_sample(interior_listings, market, features), title, series)
+            draw_market(axis, decade_sample(interior_listings, market), title)
         axes[0].set_ylabel("Asking-price difference")
         save_figure(figure, directory, number)
