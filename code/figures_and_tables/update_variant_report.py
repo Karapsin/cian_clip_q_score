@@ -14,7 +14,9 @@ from urllib.parse import quote
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "code"))
 
-from utils.paper_variants import FIGURE_TITLES, TABLE_TITLES, VARIANTS, VARIANT_FIGURES, VARIANT_TABLES, VARIANT_TITLES
+from utils.paper_exhibits import (
+    FIGURE_TITLES, FIGURE_VARIANTS, TABLE_TITLES, TABLE_VARIANTS, VARIANT_TITLES, number_label,
+)
 
 
 STYLE = """
@@ -64,20 +66,17 @@ def link(path, report, label):
     return f'<a href="{escape(target, quote=True)}">{escape(label)}</a>'
 
 
-def number_label(number):
-    return "A.1" if number == "A1" else str(int(number))
-
-
-def exhibit_index(kind, titles, variants, project, report):
+def exhibit_index(kind, titles, variants_by_number, project, report):
     folder = project / "outputs" / f"{kind}s"
     extension, download = ("pdf", "PDF") if kind == "figure" else ("tex", "LaTeX")
-    headers = "".join(f"<th scope='col'>{variant}. {escape(VARIANT_TITLES[variant])}</th>" for variant in VARIANTS)
+    headers = "".join(f"<th scope='col'>{variant}. {escape(title)}</th>" for variant, title in VARIANT_TITLES.items())
     rows = []
     for number, title in titles.items():
-        if number in variants:
+        if number in variants_by_number:
             cells = "".join(
                 f"<td>{link(folder / f'{kind}_{number}_{variant}.{extension}', report, download)}</td>"
-                for variant in VARIANTS
+                if variant in variants_by_number[number] else "<td></td>"
+                for variant in VARIANT_TITLES
             )
         else:
             cells = f"<td colspan='2'>{link(folder / f'{kind}_{number}.{extension}', report, download)}</td>"
@@ -109,8 +108,8 @@ def shared_tables(project):
 def update_report(project, report):
     pdf = link(project / "tables_and_figures.pdf", report, "Tables and figures PDF")
     csv = link(project / "outputs/tables/paper_variant_numbers.csv", report, "Results CSV")
-    figures = exhibit_index("figure", FIGURE_TITLES, VARIANT_FIGURES, project, report)
-    tables = exhibit_index("table", TABLE_TITLES, VARIANT_TABLES, project, report)
+    figures = exhibit_index("figure", FIGURE_TITLES, FIGURE_VARIANTS, project, report)
+    tables = exhibit_index("table", TABLE_TITLES, TABLE_VARIANTS, project, report)
     comparisons = "\n".join(shared_tables(project))
     page = f"""<!doctype html>
 <html lang="en">

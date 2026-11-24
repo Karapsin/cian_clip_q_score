@@ -3,6 +3,7 @@
 import pandas as pd
 
 from .paper_data import MARKETS
+from .paper_exhibits import TABLE_VARIANTS
 from .paper_models import FEATURE_LABELS
 from .paper_variants import (
     SCORES, VARIANTS, fit_shared_cohorts, fit_variant, photo_responses, price_stats,
@@ -97,9 +98,10 @@ def export_variant_tables(directory, listings, photos, quality_models, llama):
             "03": image_descriptives(photos, quality_models, features),
             "04": image_regressions(quality_models, features), "05": ols, "06": boosting, "07": duration_table(fits),
         }
-        for number, table in exhibits.items():
-            write_table(table, directory / f"table_{number}_{variant}.tex")
-        print(f"Saved Tables 03–07 for variant {variant}", flush=True)
+        exported_numbers = [number for number in exhibits if variant in TABLE_VARIANTS[number]]
+        for number in exported_numbers:
+            write_table(exhibits[number], directory / f"table_{number}_{variant}.tex")
+        print(f"Saved Tables {', '.join(exported_numbers)} for variant {variant}", flush=True)
 
     shared = fit_shared_cohorts(eligible["B"])
     price, duration = shared_price_table(shared), shared_duration_table(shared)

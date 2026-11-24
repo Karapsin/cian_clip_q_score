@@ -5,6 +5,7 @@ numpy==2.5.5
 opencv-python==5.1.0.95
 pandas==3.1.1
 Pillow==13.0.0
+PyMuPDF==1.26.6
 pyarrow==26.0.1
 scikit-image==0.26.0
 torch==2.7.1

@@ -7,11 +7,10 @@ import seaborn as sns
 from sklearn.inspection import partial_dependence
 
 from .paper_data import MARKETS, load_llama_scores
+from .paper_exhibits import FIGURE_TITLES, VARIANT_TITLES, number_label
 from .paper_models import FEATURE_LABELS, PRICE_SCALE, PRICE_UNITS, SEED, boost_features, boosting_shap, linear_shap, ols_features
 from .paper_plots import add_basemap, plot_categories
-from .paper_variants import (
-    FIGURE_TITLES, SCORES, VARIANTS, VARIANT_TITLES, fit_variant, photo_responses, quartile_curves,
-)
+from .paper_variants import SCORES, VARIANTS, fit_variant, photo_responses, quartile_curves
 
 
 SCATTER = {"alpha": 0.25, "s": 3, "rasterized": True}
@@ -237,7 +236,7 @@ def distributions(fig, data, features):
 
 
 def save_variant_figure(directory, number, variant, figure):
-    label = "A.1" if number == "A1" else str(int(number))
+    label = number_label(number)
     figure.suptitle(f"Figure {label}{variant}. {FIGURE_TITLES[number]} · {VARIANT_TITLES[variant]}", fontsize=13)
     for axis in figure.axes:
         axis.tick_params(labelsize=8)
