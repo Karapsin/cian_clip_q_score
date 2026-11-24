@@ -1,14 +1,11 @@
 """Build the alternate paper tables and the cross-variant numeric export."""
 
-from shutil import copyfile
-
 import pandas as pd
 
 from .paper_data import MARKETS
 from .paper_models import FEATURE_LABELS
-from .paper_survival import fit_cox_model
 from .paper_variants import (
-    SCORES, VARIANTS, VARIANT_TABLES, MarketFit, fit_shared_cohorts, fit_variant, photo_responses, price_stats,
+    SCORES, VARIANTS, fit_shared_cohorts, fit_variant, photo_responses, price_stats,
     shared_duration_table, shared_price_table, variant_numbers,
 )
 
@@ -83,24 +80,19 @@ def coefficient(model, term):
 def price_tables(fits, features):
     ols_columns, hgb_columns = {}, {}
     for market, fit in fits.items():
-        for number, models in enumerate((fit.baseline, fit.price), start=1):
-            ols = models["ols"]
-            ols_rows, hgb_rows = {}, {}
-            for feature in features:
-                label = FEATURE_LABELS[feature]
-                ols_rows[label] = coefficient(ols, feature) if number == 2 else ""
-                ols_rows[f"{label} (HC3 SE)"] = f"({ols.bse[feature]:.3f})" if number == 2 else ""
-            for split, data in (("Train", fit.train), ("Test", fit.test)):
-                stats = price_stats(models, data)
-                for rows, kind in ((ols_rows, "ols"), (hgb_rows, "hgb")):
-                    for label, value in stats[kind].items():
-                        rows[f"{split} {label}"] = f"{value:,.0f}" if label == "N" else f"{value:.3f}"
-            for rows in (ols_rows, hgb_rows):
-                rows["Listing controls"] = "Yes"
-                rows["Variant scores"] = "" if number == 1 else "Yes"
-            key = (MARKETS[market], f"({number})")
-            ols_columns[key] = ols_rows
-            hgb_columns[key] = hgb_rows
+        ols = fit.price["ols"]
+        ols_rows, hgb_rows = {}, {}
+        for feature in features:
+            label = FEATURE_LABELS[feature]
+            ols_rows[label] = coefficient(ols, feature)
+            ols_rows[f"{label} (HC3 SE)"] = f"({ols.bse[feature]:.3f})"
+        for split, data in (("Train", fit.train), ("Test", fit.test)):
+            stats = price_stats(fit.price, data)
+            for rows, kind in ((ols_rows, "ols"), (hgb_rows, "hgb")):
+                for label, value in stats[kind].items():
+                    rows[f"{split} {label}"] = f"{value:,.0f}" if label == "N" else f"{value:.3f}"
+        ols_columns[MARKETS[market]] = ols_rows
+        hgb_columns[MARKETS[market]] = hgb_rows
     return pd.DataFrame(ols_columns), pd.DataFrame(hgb_columns)
 
 
@@ -118,18 +110,10 @@ def write_table(frame, path, **options):
     path.write_text(frame.to_latex(float_format="{:.3f}".format, escape=True, na_rep="", **options), encoding="utf-8")
 
 
-def export_variant_tables(directory, listings, photos, quality_models, llama, interior_fits, interior_durations):
-    eligible = {"A": {}}
-    for market, (train, test, models) in interior_fits.items():
-        duration = interior_durations[market]
-        eligible["A"][market] = MarketFit(train, test, models[2], duration, fit_cox_model(duration), models[1])
-    for number in VARIANT_TABLES:
-        copyfile(directory / f"table_{number}.tex", directory / f"table_{number}_A.tex")
-
+def export_variant_tables(directory, listings, photos, quality_models, llama):
+    eligible = {}
     for variant, features in VARIANTS.items():
-        if variant == "A":
-            continue
-        fits = fit_variant(listings, features, include_baseline=True)
+        fits = fit_variant(listings, features)
         eligible[variant] = fits
         ols, boosting = price_tables(fits, features)
         exhibits = {
@@ -141,7 +125,7 @@ def export_variant_tables(directory, listings, photos, quality_models, llama, in
             write_table(table, directory / f"table_{number}_{variant}.tex", **options)
         print(f"Saved Tables 01 and 03–07 for variant {variant}", flush=True)
 
-    shared = fit_shared_cohorts(listings)
+    shared = fit_shared_cohorts(eligible["B"])
     price, duration = shared_price_table(shared), shared_duration_table(shared)
     write_table(price, directory / "table_price_shared.tex", index=False)
     write_table(duration, directory / "table_duration_shared.tex", index=False)

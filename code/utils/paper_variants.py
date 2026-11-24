@@ -32,20 +32,42 @@ SCORES = {
 }
 ALL_SCORES = tuple(SCORES)
 VARIANTS = {
-    "A": ALL_SCORES[:1],
-    "B": ("exterior_polarity_adj",),
-    "C": ("plan_polarity_adj",),
-    "D": ALL_SCORES[:3],
-    "E": ("mean_p_unfinished",),
-    "F": ALL_SCORES,
+    "A": ("exterior_polarity_adj",),
+    "B": ALL_SCORES,
 }
 VARIANT_TITLES = {
-    "A": "Interior",
-    "B": "Exterior",
-    "C": "Floor plan",
-    "D": "Interior, exterior and floor plan",
-    "E": "Unfinished probability",
-    "F": "All three scores and unfinished probability",
+    "A": "Exterior Q only",
+    "B": "All CLIP features",
+}
+FIGURE_TITLES = {
+    "01": "CLIP training diagram",
+    "02": "Listing creation dates",
+    "03": "Images per listing by author type",
+    "04": "Property location and number of images",
+    "05": "Image dimensions",
+    "06": "Image quality and CLIP scores",
+    "07": "LLaMA4 ratings and CLIP scores",
+    "08": "Property size and CLIP scores",
+    "09": "Property characteristics and CLIP scores",
+    "10": "Construction year and CLIP scores",
+    "11": "Moscow demolition programme",
+    "12": "CLIP scores by Moscow district",
+    "13": "Asking prices and CLIP scores",
+    "14": "Partial dependence of asking price on CLIP scores",
+    "15": "SHAP feature importance",
+    "16": "Kaplan–Meier curves by score quartile",
+    "17": "Proportional hazards model",
+    "A1": "LLaMA4 and CLIP score distributions",
+}
+TABLE_TITLES = {
+    "01": "CLIP score calculation",
+    "02": "Listing characteristics",
+    "03": "Image quality descriptives",
+    "04": "Regression of CLIP scores on image quality",
+    "05": "Hedonic regression",
+    "06": "Histogram gradient boosting",
+    "07": "Time on the market",
+    "A1": "LLaMA4 image-rating prompt",
 }
 VARIANT_FIGURES = tuple(f"{number:02}" for number in range(5, 18)) + ("A1",)
 VARIANT_TABLES = ("01", "03", "04", "05", "06", "07")
@@ -58,31 +80,29 @@ class MarketFit:
     price: dict
     duration: pd.DataFrame
     cox: object
-    baseline: dict | None = None
 
 
-def fit_variant(listings: pd.DataFrame, features: tuple, *, include_baseline: bool = False) -> dict:
+def fit_variant(listings: pd.DataFrame, features: tuple) -> dict:
     fits = {}
     for market in MARKETS:
         train, test = price_split(listings, market, features)
         duration = duration_sample(listings, market, features)
         fits[market] = MarketFit(
             train, test, fit_price_specification(train, market, features), duration, fit_cox_model(duration, features),
-            baseline=fit_price_specification(train, market) if include_baseline else None,
         )
     return fits
 
 
-def fit_shared_cohorts(listings: pd.DataFrame) -> dict:
-    fits = {variant: {} for variant in ("baseline", *VARIANTS)}
-    for market in MARKETS:
-        train, test = price_split(listings, market, ALL_SCORES)
-        duration = duration_sample(listings, market, ALL_SCORES)
-        for variant, features in {"baseline": (), **VARIANTS}.items():
-            fits[variant][market] = MarketFit(
-                train, test, fit_price_specification(train, market, features), duration, fit_cox_model(duration, features),
-            )
-    return fits
+def fit_shared_cohorts(combined: dict) -> dict:
+    """Refit the exterior model on the combined model's existing samples."""
+    exterior = {}
+    features = VARIANTS["A"]
+    for market, fit in combined.items():
+        exterior[market] = MarketFit(
+            fit.train, fit.test, fit_price_specification(fit.train, market, features), fit.duration,
+            fit_cox_model(fit.duration, features),
+        )
+    return {"A": exterior, "B": combined}
 
 
 def price_stats(models: dict, data: pd.DataFrame) -> dict:
@@ -125,15 +145,15 @@ def shared_duration_table(shared: dict) -> pd.DataFrame:
     rows = []
     for variant, fits in shared.items():
         for market, fit in fits.items():
-            for feature in VARIANTS.get(variant, ("",)):
-                row = fit.cox.summary.loc[feature] if feature else None
+            for feature in VARIANTS[variant]:
+                row = fit.cox.summary.loc[feature]
                 rows.append({
-                    "Market": MARKETS[market], "Variant": variant, "Score": FEATURE_LABELS.get(feature, ""),
+                    "Market": MARKETS[market], "Variant": variant, "Score": FEATURE_LABELS[feature],
                     "N": len(fit.duration), "Closed": int(fit.duration["status"].sum()),
                     "Censored": int(fit.duration["status"].eq(False).sum()), "Concordance": fit.cox.concordance_index_,
-                    "HR (+1 point)": row["exp(coef)"] if feature else None,
-                    "Lower 95%": row["exp(coef) lower 95%"] if feature else None,
-                    "Upper 95%": row["exp(coef) upper 95%"] if feature else None,
+                    "HR (+1 point)": row["exp(coef)"],
+                    "Lower 95%": row["exp(coef) lower 95%"],
+                    "Upper 95%": row["exp(coef) upper 95%"],
                 })
     return pd.DataFrame(rows).sort_values("Market", kind="stable")
 
@@ -142,20 +162,17 @@ def variant_numbers(listings, photos, quality_models, llama, eligible, shared) -
     rows = []
     for cohort, all_fits in (("eligible", eligible), ("shared", shared)):
         for variant, fits in all_fits.items():
-            features = VARIANTS.get(variant, ())
+            features = VARIANTS[variant]
             for market, fit in fits.items():
                 def record(model, values, feature=""):
                     rows.extend((cohort, variant, market, model, feature, key, value) for key, value in values.items())
 
-                for models, suffix in ((fit.price, ""), (fit.baseline, "_baseline")):
-                    if models is None:
-                        continue
-                    for split, data in (("train", fit.train), ("test", fit.test)):
-                        for model, stats in price_stats(models, data).items():
-                            record(model + suffix, {
-                                f"{split}_n": stats["N"], f"{split}_adjusted_r2": stats["Adjusted R²"],
-                                f"{split}_rmse": stats["RMSE"],
-                            })
+                for split, data in (("train", fit.train), ("test", fit.test)):
+                    for model, stats in price_stats(fit.price, data).items():
+                        record(model, {
+                            f"{split}_n": stats["N"], f"{split}_adjusted_r2": stats["Adjusted R²"],
+                            f"{split}_rmse": stats["RMSE"],
+                        })
 
                 events = fit.duration["status"]
                 record("cox", {

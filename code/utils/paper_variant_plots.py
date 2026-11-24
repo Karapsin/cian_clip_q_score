@@ -1,11 +1,7 @@
 """Figures for the alternate photo-score specifications."""
 
-from contextlib import ExitStack
-from shutil import copyfile
-
 import geopandas as gpd
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import seaborn as sns
 from sklearn.inspection import partial_dependence
@@ -13,7 +9,9 @@ from sklearn.inspection import partial_dependence
 from .paper_data import MARKETS, load_llama_scores
 from .paper_models import FEATURE_LABELS, PRICE_SCALE, PRICE_UNITS, SEED, boost_features, boosting_shap, linear_shap, ols_features
 from .paper_plots import add_basemap, plot_categories
-from .paper_variants import SCORES, VARIANTS, VARIANT_FIGURES, fit_variant, photo_responses, quartile_curves
+from .paper_variants import (
+    FIGURE_TITLES, SCORES, VARIANTS, VARIANT_TITLES, fit_variant, photo_responses, quartile_curves,
+)
 
 
 SCATTER = {"alpha": 0.25, "s": 3, "rasterized": True}
@@ -24,7 +22,7 @@ def market_rows(data):
         yield market, title, data.loc[data["deal_type"].eq(market)]
 
 
-def dimensions(photos, feature):
+def dimensions(fig, photos, feature):
     score = SCORES[feature]
     data = photos[score.photo_type].dropna(subset=["width", "height"])
     groups = (
@@ -32,7 +30,7 @@ def dimensions(photos, feature):
          (data.loc[data["unfinished"].eq(False)], "Other scored interiors")]
         if feature == "mean_p_unfinished" else [(data, score.photo_type.capitalize())]
     )
-    fig, axes = plt.subplots(len(groups), 2, figsize=(8, 3.2 * len(groups)), squeeze=False, sharex=True, sharey=True)
+    axes = fig.subplots(len(groups), 2, squeeze=False, sharex=True, sharey=True)
     for (group, label), row in zip(groups, axes):
         for ax, (_, market, images) in zip(row, market_rows(group)):
             ax.scatter(images["width"], images["height"], **SCATTER)
@@ -41,12 +39,11 @@ def dimensions(photos, feature):
             ax.set_title(f"{market}\n{label} (n={len(images):,})", fontsize=9)
             ax.set(xlabel="Width (pixels)", ylabel="Height (pixels)")
             ax.grid(linestyle=":", alpha=0.7)
-    return fig
 
 
-def technical_quality(photos, models, feature):
+def technical_quality(fig, photos, models, feature):
     score = SCORES[feature]
-    fig, axes = plt.subplots(2, 3, figsize=(9, 5.5), sharey="row")
+    axes = fig.subplots(2, 3, sharey="row")
     for row, (market, title) in zip(axes, MARKETS.items()):
         data = photo_responses(photos, models, feature, market)
         for ax, measure in zip(row, ("sharpness", "brisque", "brightness")):
@@ -56,11 +53,10 @@ def technical_quality(photos, models, feature):
                    ylabel=score.raw_label if ax is row[0] else "")
             ax.grid(linestyle=":", alpha=0.7)
         row[1].set_title(f"{title} (n={len(data):,})")
-    return fig
 
 
-def llama_agreement(paired, score):
-    fig, axes = plt.subplots(1, 2, figsize=(8, 3.5), sharey=True)
+def llama_agreement(fig, paired, score):
+    axes = fig.subplots(1, 2, sharey=True)
     for ax, (_, title, market) in zip(axes, market_rows(paired)):
         data = market.dropna(subset=[score.raw_listing_value, "average_luxury_score"])
         correlation = data[score.raw_listing_value].corr(data["average_luxury_score"])
@@ -69,12 +65,11 @@ def llama_agreement(paired, score):
         ax.set(title=f"{title} (n={len(data):,}, r={correlation:.3f})", xlabel=score.raw_label,
                ylabel="Archived LLaMA4 luxury rating" if ax is axes[0] else "")
         ax.grid(linestyle=":", alpha=0.7)
-    return fig
 
 
-def listing_categories(data, score, attributes, *, show_area=False):
+def listing_categories(fig, data, score, attributes, *, show_area=False):
     count = len(attributes) + int(show_area)
-    fig, axes = plt.subplots(count, 2, figsize=(8, 3.1 * count), squeeze=False, sharey="row")
+    axes = fig.subplots(count, 2, squeeze=False, sharey="row")
     for column, (_, title, market) in enumerate(market_rows(data)):
         if show_area:
             ax = axes[0, column]
@@ -89,11 +84,10 @@ def listing_categories(data, score, attributes, *, show_area=False):
         for row, (variable, label) in enumerate(attributes, start=int(show_area)):
             plot_categories(market, variable, label, axes[row, column], title=title, left=column == 0,
                             score=score.raw_listing_value, score_label=score.raw_label)
-    return fig
 
 
-def construction_year(data, score):
-    fig, axes = plt.subplots(2, 1, figsize=(8, 6.5), sharex=True, sharey=True)
+def construction_year(fig, data, score):
+    axes = fig.subplots(2, 1, sharex=True, sharey=True)
     for ax, (_, title, market) in zip(axes, market_rows(data)):
         by_year = market.groupby("buildYearCapped", observed=False)[score.raw_listing_value].agg(["mean", "size"])
         x = np.arange(len(by_year))
@@ -108,15 +102,14 @@ def construction_year(data, score):
         ax.set(title=title, ylabel=score.raw_label)
         ax.grid(linestyle=":", alpha=0.7)
     axes[-1].set_xlabel("Construction year")
-    return fig
 
 
-def districts_figure(data, score, districts, assets):
+def districts_figure(fig, data, score, districts, assets):
     points = gpd.GeoDataFrame(data, geometry=gpd.points_from_xy(data["lng"], data["lat"]), crs=4326).to_crs(districts.crs)
     matched = points.sjoin(districts, predicate="intersects")
     means = matched.groupby(["deal_type", "raion_rus"])[score.raw_listing_value].mean()
     norm = plt.Normalize(vmin=means.min(), vmax=means.max())
-    fig, axes = plt.subplots(1, 2, figsize=(8, 4.5), layout="constrained")
+    axes = fig.subplots(1, 2)
     for ax, (market, title) in zip(axes, MARKETS.items()):
         polygons = districts.join(means.loc[market], on="raion_rus").to_crs(3857)
         polygons.plot(column=score.raw_listing_value, cmap="RdYlGn", norm=norm, ax=ax,
@@ -126,11 +119,10 @@ def districts_figure(data, score, districts, assets):
         ax.set_axis_off()
     fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap="RdYlGn"), ax=axes, label=score.raw_label, shrink=0.6)
     fig.text(0.5, 0.02, "© OpenStreetMap contributors · © CARTO", ha="center", size=7)
-    return fig
 
 
-def asking_prices(data, feature):
-    fig, axes = plt.subplots(1, 2, figsize=(8, 3.5))
+def asking_prices(fig, data, feature):
+    axes = fig.subplots(1, 2)
     for ax, (market, title, frame) in zip(axes, market_rows(data)):
         frame = frame.loc[frame["price_last"].gt(0)]
         log_price = np.log(frame["price_last"] / PRICE_SCALE[market])
@@ -139,11 +131,10 @@ def asking_prices(data, feature):
         ax.set(title=f"{title} (n={len(frame):,})", xlabel=FEATURE_LABELS[feature],
                ylabel=f"Log asking price ({PRICE_UNITS[market]})")
         ax.grid(linestyle=":", alpha=0.7)
-    return fig
 
 
-def price_dependence(fits, feature):
-    fig, axes = plt.subplots(1, 2, figsize=(8, 3.5))
+def price_dependence(fig, fits, feature):
+    axes = fig.subplots(1, 2)
     for ax, (market, title) in zip(axes, MARKETS.items()):
         fit = fits[market]
         model = fit.price
@@ -160,11 +151,10 @@ def price_dependence(fits, feature):
         ax.set(title=title, xlabel=FEATURE_LABELS[feature], ylabel=f"Log asking price ({PRICE_UNITS[market]})")
         ax.legend(fontsize="small")
         ax.grid(linestyle=":", alpha=0.7)
-    return fig
 
 
-def shap_figure(fits, features):
-    fig, axes = plt.subplots(2, 2, figsize=(10, 7))
+def shap_figure(fig, fits, features):
+    axes = fig.subplots(2, 2)
     for column, (market, title) in enumerate(MARKETS.items()):
         fit = fits[market]
         linear = linear_shap(fit.train, fit.test, market, features)
@@ -179,11 +169,10 @@ def shap_figure(fits, features):
             ax.set(title=f"{title} · {model}", xlabel="Mean absolute SHAP value")
             ax.grid(axis="x", linestyle=":", alpha=0.7)
             ax.set_axisbelow(True)
-    return fig
 
 
-def kaplan_meier(fits, feature):
-    fig, axes = plt.subplots(1, 2, figsize=(8, 3.5), sharey=True)
+def kaplan_meier(fig, fits, feature):
+    axes = fig.subplots(1, 2, sharey=True)
     for ax, (market, title) in zip(axes, MARKETS.items()):
         for number, group, curve in quartile_curves(fits[market].duration, feature):
             ax.step(np.r_[0, curve.surv_times, group["dur"].max()],
@@ -192,11 +181,10 @@ def kaplan_meier(fits, feature):
         ax.set(title=title, xlabel="Days since listing", ylabel="Survival probability", ylim=(0, 1.03))
         ax.legend(title=FEATURE_LABELS[feature], fontsize="small", title_fontsize="small")
         ax.grid(linestyle=":", alpha=0.7)
-    return fig
 
 
-def cox_figure(fits, features):
-    fig, axes = plt.subplots(len(features) + 1, 2, figsize=(10, 2.65 * (len(features) + 1)), squeeze=False)
+def cox_figure(fig, fits, features):
+    axes = fig.subplots(len(features) + 1, 2, squeeze=False)
     terms = [*features, "np.log(price_first)", "np.log(totalArea)"]
     labels = [*(FEATURE_LABELS[feature] for feature in features), "Log initial price", "Log area"]
     for column, (market, title) in enumerate(MARKETS.items()):
@@ -218,16 +206,17 @@ def cox_figure(fits, features):
             ax.legend([f"{level:.3g}" for level in levels], title=FEATURE_LABELS[feature], fontsize="small", title_fontsize="small")
             ax.set(xlabel="Days since listing", ylabel="Survival probability")
             ax.grid(linestyle=":", alpha=0.7)
-    return fig
 
 
-def distributions(data, score):
-    fig, axes = plt.subplots(2, 2, figsize=(8, 5.5), sharex="row")
+def distributions(fig, data, features):
+    fields = [
+        ("average_luxury_score", "Archived LLaMA4 luxury rating"),
+        *((SCORES[feature].raw_listing_value, SCORES[feature].raw_label) for feature in features),
+    ]
+    axes = fig.subplots(len(fields), 2, sharex="row")
     for column, (_, title, market) in enumerate(market_rows(data)):
         axes[0, column].set_title(title)
-        for row, (feature, label) in enumerate([
-            ("average_luxury_score", "Archived LLaMA4 luxury rating"), (score.raw_listing_value, score.raw_label),
-        ]):
+        for row, (feature, label) in enumerate(fields):
             ax = axes[row, column]
             values = market[feature].dropna()
             sns.histplot(x=values, bins=12, stat="proportion", ax=ax, edgecolor="lightgrey")
@@ -237,69 +226,68 @@ def distributions(data, score):
                 ax.axvline(bound, color="black", linestyle="--", linewidth=1)
             ax.set(xlabel=label, ylabel="Share of listings")
             ax.legend(title=f"n={len(values):,}", fontsize="small", title_fontsize="small")
-    return fig
 
 
-def write_page(pdf, figure, title):
-    figure.suptitle(title, fontsize=11)
-    if figure.get_layout_engine() is None:
-        figure.tight_layout()
-    for ax in figure.axes:
-        ax.tick_params(labelsize=8)
-    pdf.savefig(figure, dpi=200, bbox_inches="tight")
+def save_variant_figure(directory, number, variant, figure):
+    label = "A.1" if number == "A1" else str(int(number))
+    figure.suptitle(f"Figure {label}{variant}. {FIGURE_TITLES[number]} · {VARIANT_TITLES[variant]}", fontsize=13)
+    for axis in figure.axes:
+        axis.tick_params(labelsize=8)
+    figure.savefig(directory / f"figure_{number}_{variant}.pdf", dpi=160, bbox_inches="tight")
     plt.close(figure)
 
 
-def score_figure_title(number, variant, feature):
-    score = SCORES[feature]
-    if number == "05":
-        label = (
-            "Dimensions by unfinished flag" if feature == "mean_p_unfinished"
-            else f"{score.photo_type.capitalize()} photo dimensions"
-        )
-    else:
-        label = FEATURE_LABELS[feature] if number in ("13", "14", "16") else score.raw_label
-    return f"Figure {number}{variant} · {label}"
-
-
 def export_variant_figures(directory, inputs, listings, photos, quality_models):
-    for number in VARIANT_FIGURES:
-        copyfile(directory / f"figure_{number}.pdf", directory / f"figure_{number}_A.pdf")
+    directory.mkdir(parents=True, exist_ok=True)
     districts = gpd.read_parquet(inputs / "moscow_administrative_districts.parquet", columns=["raion_rus", "geometry"])
     districts = districts.dissolve(by="raion_rus", as_index=False)
     assets = inputs / "figure_assets"
+    room_labels = [("roomsCount_grouped", "Rooms"), ("bathrooms_cat", "Bathrooms")]
+    property_labels = [
+        ("floorNumberCapped", "Floor"), ("ceilingHeightCapped", "Ceiling height"), ("repairType", "Repair"),
+    ]
+
     for variant, features in VARIANTS.items():
-        if variant == "A":
-            continue
         fits = fit_variant(listings, features)
         data = listings.dropna(subset=list(features))
         paired = load_llama_scores(inputs / "llama4_scores.parquet", data)
-        with ExitStack() as stack:
-            pages = {
-                number: stack.enter_context(PdfPages(directory / f"figure_{number}_{variant}.pdf"))
-                for number in VARIANT_FIGURES
-            }
-            for feature in features:
-                score = SCORES[feature]
-                builders = {
-                    "05": (dimensions, photos, feature),
-                    "06": (technical_quality, photos, quality_models, feature),
-                    "07": (llama_agreement, paired, score),
-                    "08": (listing_categories, data, score,
-                           [("roomsCount_grouped", "Rooms"), ("bathrooms_cat", "Bathrooms")]),
-                    "09": (listing_categories, data, score,
-                           [("floorNumberCapped", "Floor"), ("ceilingHeightCapped", "Ceiling height"), ("repairType", "Repair")]),
-                    "10": (construction_year, data, score),
-                    "11": (listing_categories, data, score, [("toDemolish", "Scheduled demolition")]),
-                    "12": (districts_figure, data, score, districts, assets),
-                    "13": (asking_prices, data, feature),
-                    "14": (price_dependence, fits, feature),
-                    "16": (kaplan_meier, fits, feature),
-                    "A1": (distributions, paired, score),
-                }
-                for number, (build, *arguments) in builders.items():
-                    figure = build(*arguments, show_area=True) if number == "08" else build(*arguments)
-                    write_page(pages[number], figure, score_figure_title(number, variant, feature))
-            write_page(pages["15"], shap_figure(fits, features), f"Figure 15{variant} · Feature importance")
-            write_page(pages["17"], cox_figure(fits, features), f"Figure 17{variant} · Proportional hazards")
+        ordered = tuple(dict.fromkeys((*VARIANTS["A"], *features)))
+        builders = {
+            "05": ((8, 5.9 if len(features) > 1 else 3.2),
+                   lambda panel, feature: dimensions(panel, photos, feature)),
+            "06": ((9, 5.1), lambda panel, feature: technical_quality(panel, photos, quality_models, feature)),
+            "07": ((8, 3.5), lambda panel, feature: llama_agreement(panel, paired, SCORES[feature])),
+            "08": ((8, 8.1),
+                   lambda panel, feature: listing_categories(panel, data, SCORES[feature], room_labels, show_area=True)),
+            "09": ((8, 8.1),
+                   lambda panel, feature: listing_categories(panel, data, SCORES[feature], property_labels)),
+            "10": ((8, 5.6), lambda panel, feature: construction_year(panel, data, SCORES[feature])),
+            "11": ((8, 3.1), lambda panel, feature: listing_categories(
+                panel, data, SCORES[feature], [("toDemolish", "Scheduled demolition")],
+            )),
+            "12": ((8, 4.5), lambda panel, feature: districts_figure(panel, data, SCORES[feature], districts, assets)),
+            "13": ((8, 3.5), lambda panel, feature: asking_prices(panel, data, feature)),
+            "14": ((8, 3.5), lambda panel, feature: price_dependence(panel, fits, feature)),
+            "16": ((8, 3.5), lambda panel, feature: kaplan_meier(panel, fits, feature)),
+        }
+        for number, ((width, height), build) in builders.items():
+            if len(ordered) == 1:
+                figure = plt.figure(figsize=(width, height), layout="constrained")
+                build(figure, ordered[0])
+            else:
+                figure = plt.figure(figsize=(2 * width, 2 * height), layout="constrained")
+                panels = figure.subfigures(2, 2, wspace=0.04, hspace=0.04)
+                for panel, feature in zip(panels.flat, ordered, strict=True):
+                    panel.suptitle(SCORES[feature].raw_label, fontsize=11)
+                    build(panel, feature)
+            save_variant_figure(directory, number, variant, figure)
+
+        for number, builder, size in [
+            ("15", shap_figure, (10, 7)),
+            ("17", cox_figure, (10, 2.65 * (len(ordered) + 1))),
+            ("A1", distributions, (8, 2.5 * (len(ordered) + 1))),
+        ]:
+            figure = plt.figure(figsize=size, layout="constrained")
+            builder(figure, paired if number == "A1" else fits, ordered)
+            save_variant_figure(directory, number, variant, figure)
         print(f"Saved Figures 05–17 and A1 for variant {variant}", flush=True)
