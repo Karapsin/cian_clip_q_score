@@ -40,7 +40,6 @@ VARIANT_TITLES = {
     "B": "All CLIP features",
 }
 FIGURE_TITLES = {
-    "01": "CLIP training diagram",
     "02": "Listing creation dates",
     "03": "Images per listing by author type",
     "04": "Property location and number of images",
@@ -60,17 +59,15 @@ FIGURE_TITLES = {
     "A1": "LLaMA4 and CLIP score distributions",
 }
 TABLE_TITLES = {
-    "01": "CLIP score calculation",
     "02": "Listing characteristics",
     "03": "Image quality descriptives",
     "04": "Regression of CLIP scores on image quality",
     "05": "Hedonic regression",
     "06": "Histogram gradient boosting",
     "07": "Time on the market",
-    "A1": "LLaMA4 image-rating prompt",
 }
 VARIANT_FIGURES = tuple(f"{number:02}" for number in range(3, 18)) + ("A1",)
-VARIANT_TABLES = ("01", "02", "03", "04", "05", "06", "07")
+VARIANT_TABLES = ("02", "03", "04", "05", "06", "07")
 
 
 @dataclass

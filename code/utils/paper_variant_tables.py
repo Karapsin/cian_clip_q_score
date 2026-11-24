@@ -16,29 +16,6 @@ IMAGE_LABELS = {
 }
 
 
-def steps_table(features):
-    steps = []
-    for feature in features:
-        score = SCORES[feature]
-        if feature == "mean_p_unfinished":
-            calculation = (
-                "Apply scaled four-way softmax to each scored interior. Average the unfinished probability "
-                "by listing over all scored interiors, including those at or above 0.90."
-            )
-        elif score.photo_type == "interior":
-            calculation = (
-                "Apply scaled four-way softmax, exclude photos with unfinished probability at least 0.90, "
-                "and subtract negative from positive probability conditional on the three finished classes."
-            )
-        else:
-            calculation = "Apply scaled softmax to the low, middle, and high similarities and subtract low from high probability."
-        steps.append((score.raw_label, calculation))
-        if score.photo_type != "interior" or feature == "clip_polarity_adj":
-            steps.append((score.raw_label, "Average polarity by listing for descriptive figures. For models, regress "
-                          "photo polarity on five technical metrics and average the residuals by listing."))
-    return pd.DataFrame(steps, columns=["Score", "Calculation"])
-
-
 def image_descriptives(photos, quality_models, features):
     by_score = {}
     for feature in features:
@@ -117,13 +94,12 @@ def export_variant_tables(directory, listings, photos, quality_models, llama):
         eligible[variant] = fits
         ols, boosting = price_tables(fits, features)
         exhibits = {
-            "01": steps_table(features), "03": image_descriptives(photos, quality_models, features),
+            "03": image_descriptives(photos, quality_models, features),
             "04": image_regressions(quality_models, features), "05": ols, "06": boosting, "07": duration_table(fits),
         }
         for number, table in exhibits.items():
-            options = {"index": False, "column_format": r"lp{0.70\linewidth}"} if number == "01" else {}
-            write_table(table, directory / f"table_{number}_{variant}.tex", **options)
-        print(f"Saved Tables 01 and 03–07 for variant {variant}", flush=True)
+            write_table(table, directory / f"table_{number}_{variant}.tex")
+        print(f"Saved Tables 03–07 for variant {variant}", flush=True)
 
     shared = fit_shared_cohorts(eligible["B"])
     price, duration = shared_price_table(shared), shared_duration_table(shared)
