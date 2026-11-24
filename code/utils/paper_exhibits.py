@@ -23,6 +23,7 @@ FIGURE_TITLES = {
     "17": "Proportional hazards model",
     "A1": "LLaMA4 and CLIP score distributions",
     "A2": "Asking prices by construction decade",
+    "A3": "Asking prices by construction decade and photo quality",
 }
 TABLE_TITLES = {
     "02": "Listing characteristics",
@@ -32,7 +33,7 @@ TABLE_TITLES = {
     "06": "Histogram gradient boosting",
     "07": "Time on the market",
 }
-FIGURE_VARIANTS = {number: tuple(VARIANT_TITLES) for number in FIGURE_TITLES if number not in ("02", "A2")}
+FIGURE_VARIANTS = {number: tuple(VARIANT_TITLES) for number in FIGURE_TITLES if number not in ("02", "A2", "A3")}
 TABLE_VARIANTS = {number: tuple(VARIANT_TITLES) for number in TABLE_TITLES}
 TABLE_VARIANTS["04"] = ("B",)
 
