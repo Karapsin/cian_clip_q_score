@@ -49,6 +49,10 @@ QUALITY_COLUMNS = ["ratio", "resolution", "brightness", "brisque", "sharpness"]
 PHOTO_STATS = ["width", "height", "resolution", "brightness", "brisque", "sharpness", "format", "mode"]
 
 
+def photo_count_categories(counts: pd.Series) -> pd.Series:
+    return pd.cut(counts, [-1, 0, 10, 20, 30, 40, np.inf], labels=PHOTO_BINS)
+
+
 def load_listings(inputs_dir: Path) -> pd.DataFrame:
     listings = pd.concat(
         [pd.read_parquet(inputs_dir / name, columns=LISTING_COLUMNS).assign(deal_type=market)
@@ -195,14 +199,15 @@ def load_analysis_data(project_root: Path, *, all_metrics: bool = True) -> tuple
     listings = listings.drop(columns="_merge")
     photo_dir = project_root / PHOTO_OUTPUTS
     inventory = load_selected_inventory(project_root)
-    counts = inventory.groupby(PROPERTY_KEY).size().rename("link_num")
-    listings = listings.merge(counts, on=PROPERTY_KEY, how="left", validate="one_to_one")
-    listings["link_num"] = listings["link_num"].fillna(0).astype(int)
-    listings["link_num_categ"] = pd.cut(
-        listings["link_num"], [-1, 0, 10, 20, 30, 40, np.inf], labels=PHOTO_BINS,
+    is_interior = inventory["photo_type"].eq("interior")
+    counts = inventory.assign(interior_photo_count=is_interior).groupby(PROPERTY_KEY).agg(
+        link_num=("photo_name", "size"), interior_photo_count=("interior_photo_count", "sum"),
     )
+    listings = listings.merge(counts, on=PROPERTY_KEY, how="left", validate="one_to_one")
+    listings[counts.columns] = listings[counts.columns].fillna(0).astype(int)
+    listings["link_num_categ"] = photo_count_categories(listings["link_num"])
 
-    interiors = load_interiors(photo_dir, inventory.loc[inventory["photo_type"].eq("interior"), PHOTO_KEY])
+    interiors = load_interiors(photo_dir, inventory.loc[is_interior, PHOTO_KEY])
     photo_types = {"interior": interiors}
     quality_models = {"interior": adjust_photo_quality(interiors)}
     interior_features = interiors.groupby(PROPERTY_KEY, as_index=False).agg(

@@ -8,6 +8,8 @@ owner_share,long_rent,0.17177807409125168
 listings_with_usable_photos,long_rent,16069
 fraction_without_usable_photos,long_rent,0.06840976288480492
 usable_photos,long_rent,276480
+listings_with_interior_photos,long_rent,15952
+classified_interior_photos,long_rent,229659
 listings_with_adjusted_interior_score,long_rent,15947
 listings_with_exterior_score,long_rent,10805
 listings_with_floor_plan_score,long_rent,6200
@@ -25,6 +27,8 @@ owner_share,sale_secondary,0.16156982670744138
 listings_with_usable_photos,sale_secondary,11129
 fraction_without_usable_photos,sale_secondary,0.054621134896364255
 usable_photos,sale_secondary,216633
+listings_with_interior_photos,sale_secondary,10771
+classified_interior_photos,sale_secondary,150243
 listings_with_adjusted_interior_score,sale_secondary,10477
 listings_with_exterior_score,sale_secondary,9735
 listings_with_floor_plan_score,sale_secondary,7060

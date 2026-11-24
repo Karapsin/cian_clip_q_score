@@ -15,6 +15,7 @@ from .paper_variants import (
 
 
 SCATTER = {"alpha": 0.25, "s": 3, "rasterized": True}
+PAPER_DEPENDENCE_PRICE_LIMITS = {"long_rent": (3.9, 4.9), "sale_secondary": (2.7, 3.7)}
 
 
 def market_rows(data):
@@ -148,7 +149,14 @@ def price_dependence(fig, fits, feature):
         hgb_line = dependence["average"][0] + fit.train["log_price"].mean()
         ax.plot(grid, ols_line, color="red", linestyle="--", label="OLS")
         ax.plot(grid, hgb_line, color="darkblue", label="Gradient boosting")
+        x_limits, tick_count = ((0, 1), 6) if feature == "mean_p_unfinished" else ((-0.3, 0.3), 7)
+        y_limits = PAPER_DEPENDENCE_PRICE_LIMITS[market]
+        ax.set_xticks(np.linspace(*x_limits, tick_count))
+        ax.set_yticks(np.arange(*y_limits, 0.2))
         ax.set(title=title, xlabel=FEATURE_LABELS[feature], ylabel=f"Log asking price ({PRICE_UNITS[market]})")
+        ax.set(xlim=x_limits, ylim=y_limits)
+        deciles = fit.test[feature].quantile(np.arange(1, 10) / 10)
+        ax.vlines(deciles, 0, 0.05, transform=ax.get_xaxis_transform(), color="black", linewidth=1)
         ax.legend(fontsize="small")
         ax.grid(linestyle=":", alpha=0.7)
 
@@ -248,10 +256,9 @@ def export_variant_figures(directory, inputs, listings, photos, quality_models):
     ]
 
     for variant, features in VARIANTS.items():
-        fits = fit_variant(listings, features)
+        fits = fit_variant(listings, variant)
         data = listings.dropna(subset=list(features))
         paired = load_llama_scores(inputs / "llama4_scores.parquet", data)
-        ordered = tuple(dict.fromkeys((*VARIANTS["A"], *features)))
         builders = {
             "05": ((8, 5.9 if len(features) > 1 else 3.2),
                    lambda panel, feature: dimensions(panel, photos, feature)),
@@ -271,23 +278,23 @@ def export_variant_figures(directory, inputs, listings, photos, quality_models):
             "16": ((8, 3.5), lambda panel, feature: kaplan_meier(panel, fits, feature)),
         }
         for number, ((width, height), build) in builders.items():
-            if len(ordered) == 1:
+            if len(features) == 1:
                 figure = plt.figure(figsize=(width, height), layout="constrained")
-                build(figure, ordered[0])
+                build(figure, features[0])
             else:
                 figure = plt.figure(figsize=(2 * width, 2 * height), layout="constrained")
                 panels = figure.subfigures(2, 2, wspace=0.04, hspace=0.04)
-                for panel, feature in zip(panels.flat, ordered, strict=True):
+                for panel, feature in zip(panels.flat, features, strict=True):
                     panel.suptitle(SCORES[feature].raw_label, fontsize=11)
                     build(panel, feature)
             save_variant_figure(directory, number, variant, figure)
 
         for number, builder, size in [
             ("15", shap_figure, (10, 7)),
-            ("17", cox_figure, (10, 2.65 * (len(ordered) + 1))),
-            ("A1", distributions, (8, 2.5 * (len(ordered) + 1))),
+            ("17", cox_figure, (10, 2.65 * (len(features) + 1))),
+            ("A1", distributions, (8, 2.5 * (len(features) + 1))),
         ]:
             figure = plt.figure(figsize=size, layout="constrained")
-            builder(figure, paired if number == "A1" else fits, ordered)
+            builder(figure, paired if number == "A1" else fits, features)
             save_variant_figure(directory, number, variant, figure)
         print(f"Saved Figures 05–17 and A1 for variant {variant}", flush=True)

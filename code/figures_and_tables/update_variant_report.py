@@ -1,4 +1,4 @@
-"""Build the report for the exterior-only and all-CLIP comparisons."""
+"""Build the report for the interior-only and all-CLIP comparisons."""
 
 import argparse
 from html import escape
@@ -129,10 +129,11 @@ def update_report(project, report):
 <main class="wrap">
 <section aria-label="Specifications">
   <dl>
-    <dt>A. Exterior Q only</dt><dd>Exterior Q and listing controls.</dd>
-    <dt>B. All CLIP features</dt><dd>Variant A plus interior Q, floor-plan Q, and mean unfinished probability.</dd>
+    <dt>A. {escape(VARIANT_TITLES["A"])}</dt><dd>Interior Q and a count of interior photos.</dd>
+    <dt>B. {escape(VARIANT_TITLES["B"])}</dt><dd>Interior, exterior, and floor-plan Q, mean unfinished probability, and a count of photos across all types.</dd>
   </dl>
-  <p>Both analyses use the photo offer recorded in the source links for each property.</p>
+  <p>Both analyses retain the paper’s listing controls and use the photo offer recorded in the source links for each property.</p>
+  <p>Figures 7 and A.1 compare the CLIP scores with the paper’s archived LLaMA4 property ratings.</p>
 </section>
 <section id="shared">
   <h2>Shared-sample results</h2>

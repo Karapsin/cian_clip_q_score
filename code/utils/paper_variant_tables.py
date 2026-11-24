@@ -113,7 +113,7 @@ def write_table(frame, path, **options):
 def export_variant_tables(directory, listings, photos, quality_models, llama):
     eligible = {}
     for variant, features in VARIANTS.items():
-        fits = fit_variant(listings, features)
+        fits = fit_variant(listings, variant)
         eligible[variant] = fits
         ols, boosting = price_tables(fits, features)
         exhibits = {

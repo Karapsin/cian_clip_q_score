@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import pandas as pd
 from statsmodels.duration.survfunc import SurvfuncRight
 
-from .paper_data import MARKETS
+from .paper_data import MARKETS, photo_count_categories
 from .paper_models import (
     FEATURE_LABELS, boost_features, fit_price_specification, model_performance, ols_features, price_split,
 )
@@ -32,11 +32,11 @@ SCORES = {
 }
 ALL_SCORES = tuple(SCORES)
 VARIANTS = {
-    "A": ("exterior_polarity_adj",),
+    "A": ("clip_polarity_adj",),
     "B": ALL_SCORES,
 }
 VARIANT_TITLES = {
-    "A": "Exterior Q only",
+    "A": "Interior photos only",
     "B": "All CLIP features",
 }
 FIGURE_TITLES = {
@@ -69,8 +69,8 @@ TABLE_TITLES = {
     "07": "Time on the market",
     "A1": "LLaMA4 image-rating prompt",
 }
-VARIANT_FIGURES = tuple(f"{number:02}" for number in range(5, 18)) + ("A1",)
-VARIANT_TABLES = ("01", "03", "04", "05", "06", "07")
+VARIANT_FIGURES = tuple(f"{number:02}" for number in range(3, 18)) + ("A1",)
+VARIANT_TABLES = ("01", "02", "03", "04", "05", "06", "07")
 
 
 @dataclass
@@ -82,7 +82,16 @@ class MarketFit:
     cox: object
 
 
-def fit_variant(listings: pd.DataFrame, features: tuple) -> dict:
+def listings_for_variant(listings: pd.DataFrame, variant: str) -> pd.DataFrame:
+    if variant == "A":
+        counts = listings["interior_photo_count"]
+        return listings.assign(link_num=counts, link_num_categ=photo_count_categories(counts))
+    return listings
+
+
+def fit_variant(listings: pd.DataFrame, variant: str) -> dict:
+    listings = listings_for_variant(listings, variant)
+    features = VARIANTS[variant]
     fits = {}
     for market in MARKETS:
         train, test = price_split(listings, market, features)
@@ -94,15 +103,19 @@ def fit_variant(listings: pd.DataFrame, features: tuple) -> dict:
 
 
 def fit_shared_cohorts(combined: dict) -> dict:
-    """Refit the exterior model on the combined model's existing samples."""
-    exterior = {}
+    """Refit the interior model on the combined model's existing samples."""
+    interior = {}
     features = VARIANTS["A"]
     for market, fit in combined.items():
-        exterior[market] = MarketFit(
-            fit.train, fit.test, fit_price_specification(fit.train, market, features), fit.duration,
-            fit_cox_model(fit.duration, features),
+        cohort = listings_for_variant(pd.concat([fit.train, fit.test]), "A")
+        cohort["link_num_categ"] = cohort["link_num_categ"].cat.remove_unused_categories()
+        train, test = cohort.loc[fit.train.index], cohort.loc[fit.test.index]
+        duration = listings_for_variant(fit.duration, "A")
+        interior[market] = MarketFit(
+            train, test, fit_price_specification(train, market, features), duration,
+            fit_cox_model(duration, features),
         )
-    return {"A": exterior, "B": combined}
+    return {"A": interior, "B": combined}
 
 
 def price_stats(models: dict, data: pd.DataFrame) -> dict:
