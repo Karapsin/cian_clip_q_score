@@ -1,4 +1,4 @@
-"""Price models using the paper's listing controls and adjusted interior Q-score."""
+"""Price models using the paper's listing controls and selected photo scores."""
 
 import numpy as np
 import pandas as pd
@@ -22,7 +22,7 @@ CATEGORICAL_FEATURES = [
 ]
 NUMERICAL_FEATURES = ["totalArea", "age", "distance_center", "distance_metro", "distance_nice", "distance_ugly"]
 LISTING_FEATURES = CATEGORICAL_FEATURES + NUMERICAL_FEATURES
-PHOTO_FEATURES = ["clip_polarity_adj"]
+PHOTO_FEATURES = ("clip_polarity_adj",)
 
 FEATURE_LABELS = {
     "roomsCount_grouped": "Rooms", "bathrooms_cat": "Bathrooms", "material": "Material",
@@ -33,6 +33,9 @@ FEATURE_LABELS = {
     "distance_metro": "Distance to metro", "distance_nice": "Distance to green area or water",
     "distance_ugly": "Distance to industrial zone",
     "clip_polarity_adj": "Adjusted interior Q-score",
+    "exterior_polarity_adj": "Adjusted exterior Q-score",
+    "plan_polarity_adj": "Adjusted floor-plan Q-score",
+    "mean_p_unfinished": "Mean unfinished probability",
 }
 
 UNIT_TERMS = (
@@ -66,9 +69,9 @@ def remove_unused_categories(frame: pd.DataFrame) -> pd.DataFrame:
     return frame
 
 
-def price_split(listings: pd.DataFrame, market: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+def price_split(listings: pd.DataFrame, market: str, photo_features=PHOTO_FEATURES) -> tuple[pd.DataFrame, pd.DataFrame]:
     frame = listings.loc[listings["deal_type"].eq(market) & listings["link_num"].gt(0)]
-    frame = frame.dropna(subset=LISTING_FEATURES + PHOTO_FEATURES + ["price_last", "price_first"])
+    frame = frame.dropna(subset=[*LISTING_FEATURES, *photo_features, "price_last", "price_first"])
     frame = frame.loc[frame["price_last"].gt(0) & frame["price_last"].lt(frame["price_last"].quantile(0.99))]
     frame = remove_unused_categories(frame.copy())
     frame["log_price"] = np.log(frame["price_last"] / PRICE_SCALE[market])
@@ -83,30 +86,26 @@ def boost_features(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     return features
 
 
-def fit_price_models(listings: pd.DataFrame, market: str, specifications=(1, 2)):
-    train, test = price_split(listings, market)
-    feature_sets = {
-        1: LISTING_FEATURES,
-        2: LISTING_FEATURES + PHOTO_FEATURES,
-    }
-    formulas = {
-        1: LISTING_TERMS,
-        2: " + ".join([LISTING_TERMS, *PHOTO_FEATURES]),
-    }
-    models = {}
-    for number in specifications:
-        y_train, X_train = dmatrices(
-            "log_price ~ " + formulas[number], data=train, return_type="dataframe", NA_action="raise",
-        )
-        ols = sm.OLS(y_train, X_train).fit(cov_type="HC3")
-        columns = feature_sets[number]
-        settings = BOOST_SETTINGS[market]["listing" if number == 1 else "clip"]
-        hgb = HistGradientBoostingRegressor(
-            random_state=SEED, early_stopping=True, categorical_features="from_dtype",
-            scoring="neg_mean_squared_error", **settings,
-        )
-        hgb.fit(boost_features(train, columns).to_numpy(), train["log_price"])
-        models[number] = {"ols": ols, "design_info": X_train.design_info, "hgb": hgb, "features": columns}
+def fit_price_specification(train: pd.DataFrame, market: str, photo_features=()):
+    formula = " + ".join([LISTING_TERMS, *photo_features])
+    target, design = dmatrices(
+        "log_price ~ " + formula, data=train, return_type="dataframe", NA_action="raise",
+    )
+    ols = sm.OLS(target, design).fit(cov_type="HC3")
+    columns = [*LISTING_FEATURES, *photo_features]
+    settings = BOOST_SETTINGS[market]["clip" if photo_features else "listing"]
+    hgb = HistGradientBoostingRegressor(
+        random_state=SEED, early_stopping=True, categorical_features="from_dtype",
+        scoring="neg_mean_squared_error", **settings,
+    )
+    hgb.fit(boost_features(train, columns).to_numpy(), train["log_price"])
+    return {"ols": ols, "design_info": design.design_info, "hgb": hgb, "features": columns}
+
+
+def fit_price_models(listings: pd.DataFrame, market: str, specifications=(1, 2), *, photo_features=PHOTO_FEATURES):
+    train, test = price_split(listings, market, photo_features)
+    feature_sets = {1: (), 2: photo_features}
+    models = {number: fit_price_specification(train, market, feature_sets[number]) for number in specifications}
     return train, test, models
 
 
@@ -132,11 +131,11 @@ def polynomial_feature_names(_transformer, input_features):
     return [f"{name}_{power}" for power in (1, 2) for name in input_features]
 
 
-def linear_shap(train: pd.DataFrame, test: pd.DataFrame, market: str) -> pd.Series:
+def linear_shap(train: pd.DataFrame, test: pd.DataFrame, market: str, photo_features=PHOTO_FEATURES) -> pd.Series:
     # Figure 15 fits its own linear model using the same controls as boosting.
-    columns = LISTING_FEATURES + PHOTO_FEATURES
+    columns = [*LISTING_FEATURES, *photo_features]
     polynomial = ["totalArea", "age"]
-    linear = [name for name in NUMERICAL_FEATURES + PHOTO_FEATURES if name not in polynomial]
+    linear = [name for name in [*NUMERICAL_FEATURES, *photo_features] if name not in polynomial]
     preprocessor = ColumnTransformer([
         ("cat", OneHotEncoder(drop="first", handle_unknown="ignore"), CATEGORICAL_FEATURES),
         ("poly", FunctionTransformer(squares_only, feature_names_out=polynomial_feature_names), polynomial),

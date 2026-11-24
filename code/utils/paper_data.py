@@ -7,15 +7,14 @@ import pandas as pd
 import statsmodels.formula.api as smf
 from scipy.special import softmax
 
-DATASETS_DIR = Path("inputs") / "datasets"
+from .paper_offers import (
+    DATASETS_DIR, LISTING_FILES, OFFER_FILE, PHOTO_KEY, PHOTO_OUTPUTS, PROPERTY_KEY,
+    load_selected_inventory, load_source_offers,
+)
 
 MARKETS = {
     "long_rent": "Long-term Rentals",
     "sale_secondary": "Secondary Sales",
-}
-LISTING_FILES = {
-    "long_rent": "lr_clean_v4.parquet",
-    "sale_secondary": "ss_clean_v4.parquet",
 }
 LISTING_COLUMNS = [
     "property_id", "author_type", "district", "lat", "lng", "date0", "date1", "status",
@@ -34,8 +33,6 @@ DISTANCES = {
     "closest_green_distance_meters": "distance_green",
 }
 
-PROPERTY_KEY = ["deal_type", "property_id"]
-PHOTO_KEY = PROPERTY_KEY + ["offer_id", "photo_name"]
 PHOTO_BINS = ["0", "1-10", "11-20", "21-30", "31-40", "41+"]
 AUTHOR_TYPES = {"owner": "Owner", "specialist": "Realtor", "": "Realtor",
                 "agency": "Agency", "managementCompany": "Agency", "rentDepartment": "Agency"}
@@ -49,7 +46,7 @@ INTERIOR_SCORES = [
 ]
 TIER_SCORES = ["low_similarity", "mid_similarity", "high_similarity"]
 QUALITY_COLUMNS = ["ratio", "resolution", "brightness", "brisque", "sharpness"]
-QUALITY_FORMULA = "clip_polarity ~ ratio + resolution + brightness + brisque + sharpness"
+PHOTO_STATS = ["width", "height", "resolution", "brightness", "brisque", "sharpness", "format", "mode"]
 
 
 def load_listings(inputs_dir: Path) -> pd.DataFrame:
@@ -128,19 +125,25 @@ def recode_listings(listings: pd.DataFrame) -> pd.DataFrame:
 
 def load_interiors(photo_dir: Path, interior_keys: pd.DataFrame) -> pd.DataFrame:
     photos = pd.read_parquet(photo_dir / "interior_photo_scores.parquet", columns=PHOTO_KEY + INTERIOR_SCORES)
-    stats = pd.read_parquet(photo_dir / "interior_photo_stats.parquet")
     photos = photos.merge(interior_keys, on=PHOTO_KEY, validate="one_to_one")
-    photos = photos.merge(stats, on=PHOTO_KEY, how="left", validate="one_to_one")
     scores = photos[INTERIOR_SCORES].to_numpy(dtype=float)
     scored = np.isfinite(scores).all(axis=1)
-    photos["p_unfinished"] = softmax(CLIP_SCALE * scores, axis=1)[:, 3]
+    photos["p_unfinished"] = pd.Series(softmax(CLIP_SCALE * scores, axis=1)[:, 3], index=photos.index).where(scored)
     photos["unfinished"] = photos["p_unfinished"].ge(UNFINISHED_CUTOFF).astype("boolean").where(scored)
     # Conditioning the four-way probabilities on the three finished classes
     # gives the same result as a softmax over their three logits.
     finished_probs = softmax(CLIP_SCALE * scores[:, :3], axis=1)
     finished = scored & photos["p_unfinished"].lt(UNFINISHED_CUTOFF)
     photos["clip_polarity"] = pd.Series(finished_probs[:, 0] - finished_probs[:, 2], index=photos.index).where(finished)
+    return merge_photo_stats(photos, photo_dir / "interior_photo_stats.parquet")
 
+
+def merge_photo_stats(photos: pd.DataFrame, path: Path, *, required: bool = False) -> pd.DataFrame:
+    stats = pd.read_parquet(path, columns=PHOTO_KEY + PHOTO_STATS)
+    photos = photos.merge(stats, on=PHOTO_KEY, how="left", validate="one_to_one", indicator=True)
+    if required and photos["_merge"].ne("both").any():
+        raise ValueError(f"{path} lacks selected photo keys. Run prepare_variant_inputs.py to refresh it.")
+    photos = photos.drop(columns="_merge")
     photos["ratio"] = photos["width"].astype(float) / photos["height"].where(photos["height"].gt(0)).astype(float)
     photos["resolution"] = photos["resolution"].astype(float) / 1e6
     for _, market in photos.groupby("deal_type"):
@@ -154,59 +157,81 @@ def load_interiors(photo_dir: Path, interior_keys: pd.DataFrame) -> pd.DataFrame
     return photos
 
 
-def adjust_photo_quality(photos: pd.DataFrame) -> dict:
-    photos["clip_polarity_adj"] = np.nan
+def adjust_photo_quality(
+    photos: pd.DataFrame, response: str = "clip_polarity", *, residual_column: str | None = "clip_polarity_adj",
+) -> dict:
+    if residual_column is not None:
+        photos[residual_column] = np.nan
+    formula = f"{response} ~ " + " + ".join(QUALITY_COLUMNS)
     models = {}
     for market, group in photos.groupby("deal_type"):
-        group = group.dropna(subset=["clip_polarity", *QUALITY_COLUMNS])
-        model = smf.ols(QUALITY_FORMULA, data=group).fit(
+        group = group.dropna(subset=[response, *QUALITY_COLUMNS])
+        model = smf.ols(formula, data=group).fit(
             cov_type="cluster", cov_kwds={"groups": group["property_id"]},
         )
-        photos.loc[group.index, "clip_polarity_adj"] = model.resid
+        if residual_column is not None:
+            photos.loc[group.index, residual_column] = model.resid
         models[market] = model
     return models
 
 
-def property_polarity(photo_dir: Path, filename: str, column: str, photo_keys: pd.DataFrame) -> pd.DataFrame:
-    scores = pd.read_parquet(photo_dir / filename, columns=PHOTO_KEY + TIER_SCORES)
+def load_tier_photos(path: Path, photo_keys: pd.DataFrame) -> pd.DataFrame:
+    scores = pd.read_parquet(path, columns=PHOTO_KEY + TIER_SCORES)
     scores = scores.merge(photo_keys, on=PHOTO_KEY, validate="one_to_one")
-    scores = scores.dropna(subset=TIER_SCORES)
-    probabilities = softmax(CLIP_SCALE * scores[TIER_SCORES].to_numpy(dtype=float), axis=1)
-    scores[column] = probabilities[:, 2] - probabilities[:, 0]
-    return scores.groupby(PROPERTY_KEY, as_index=False)[column].mean()
+    similarities = scores[TIER_SCORES].to_numpy(dtype=float)
+    probabilities = softmax(CLIP_SCALE * similarities, axis=1)
+    scores["clip_polarity"] = pd.Series(probabilities[:, 2] - probabilities[:, 0], index=scores.index).where(
+        np.isfinite(similarities).all(axis=1),
+    )
+    return scores
 
 
-def load_paper_data(project_root: Path) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+def load_analysis_data(project_root: Path, *, all_metrics: bool = True) -> tuple[pd.DataFrame, dict, dict]:
     listings = load_listings(project_root / DATASETS_DIR)
-    properties = listings[PROPERTY_KEY]
-    photo_dir = project_root / "outputs" / "clip_and_photo_stats"
-    inventory = pd.read_parquet(photo_dir / "photo_classifications.parquet", columns=PHOTO_KEY + ["label"])
-    inventory = inventory.merge(properties, on=PROPERTY_KEY, validate="many_to_one")
-    counts = inventory.dropna(subset=["label"]).groupby(PROPERTY_KEY).size().rename("link_num")
+    offers = load_source_offers(project_root)
+    listings = listings.merge(offers, on=PROPERTY_KEY, how="left", validate="one_to_one", indicator=True)
+    if len(listings) != len(offers) or listings["_merge"].ne("both").any():
+        raise ValueError(f"{OFFER_FILE} does not match the study listing keys")
+    listings = listings.drop(columns="_merge")
+    photo_dir = project_root / PHOTO_OUTPUTS
+    inventory = load_selected_inventory(project_root)
+    counts = inventory.groupby(PROPERTY_KEY).size().rename("link_num")
     listings = listings.merge(counts, on=PROPERTY_KEY, how="left", validate="one_to_one")
     listings["link_num"] = listings["link_num"].fillna(0).astype(int)
     listings["link_num_categ"] = pd.cut(
         listings["link_num"], [-1, 0, 10, 20, 30, 40, np.inf], labels=PHOTO_BINS,
     )
 
-    interiors = load_interiors(photo_dir, inventory.loc[inventory["label"].eq("interior"), PHOTO_KEY])
-    quality_models = adjust_photo_quality(interiors)
+    interiors = load_interiors(photo_dir, inventory.loc[inventory["photo_type"].eq("interior"), PHOTO_KEY])
+    photo_types = {"interior": interiors}
+    quality_models = {"interior": adjust_photo_quality(interiors)}
     interior_features = interiors.groupby(PROPERTY_KEY, as_index=False).agg(
         clip_polarity=("clip_polarity", "mean"),
         clip_polarity_adj=("clip_polarity_adj", "mean"),
+        mean_p_unfinished=("p_unfinished", "mean"),
         share_unfinished=("unfinished", "mean"),
     )
     interior_features["share_unfinished"] = interior_features["share_unfinished"].astype(float)
-    exterior_keys = inventory.loc[inventory["label"].isin(["street", "view", "common"]), PHOTO_KEY]
-    plan_keys = inventory.loc[inventory["label"].eq("floor_plan"), PHOTO_KEY]
-    # Use the property key because the listing exports store a different offer identifier.
-    for features in (
-        interior_features,
-        property_polarity(photo_dir, "exterior_photo_scores.parquet", "exterior_polarity", exterior_keys),
-        property_polarity(photo_dir, "plan_photo_scores.parquet", "plan_polarity", plan_keys),
-    ):
+    listings = listings.merge(interior_features, on=PROPERTY_KEY, how="left", validate="one_to_one")
+    for kind in ("exterior", "plan"):
+        keys = inventory.loc[inventory["photo_type"].eq(kind), PHOTO_KEY]
+        photos = load_tier_photos(photo_dir / f"{kind}_photo_scores.parquet", keys)
+        columns = {f"{kind}_polarity": ("clip_polarity", "mean")}
+        if all_metrics:
+            photos = merge_photo_stats(photos, photo_dir / f"{kind}_photo_stats.parquet", required=True)
+            quality_models[kind] = adjust_photo_quality(photos)
+            columns[f"{kind}_polarity_adj"] = ("clip_polarity_adj", "mean")
+        photo_types[kind] = photos
+        features = photos.groupby(PROPERTY_KEY, as_index=False).agg(**columns)
         listings = listings.merge(features, on=PROPERTY_KEY, how="left", validate="one_to_one")
-    return listings, interiors, quality_models
+    if all_metrics:
+        quality_models["unfinished"] = adjust_photo_quality(interiors, "p_unfinished", residual_column=None)
+    return listings, photo_types, quality_models
+
+
+def load_paper_data(project_root: Path) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+    listings, photo_types, quality_models = load_analysis_data(project_root, all_metrics=False)
+    return listings, photo_types["interior"], quality_models["interior"]
 
 
 def load_llama_scores(path: Path, listings: pd.DataFrame) -> pd.DataFrame:

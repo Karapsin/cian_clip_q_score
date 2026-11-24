@@ -25,14 +25,17 @@ def add_basemap(ax, path: Path) -> None:
     ax.set_ylim(ylim)
 
 
-def plot_categories(data, category: str, xlabel: str, ax, *, title: str, left: bool = False) -> None:
+def plot_categories(
+    data, category: str, xlabel: str, ax, *, title: str, left: bool = False,
+    score: str = "clip_polarity", score_label: str = "Average Clip Polarity",
+) -> None:
     order = data[category].cat.categories
-    groups = data.groupby(category, observed=True)["clip_polarity"].agg(["mean", "median", "count"])
+    groups = data.groupby(category, observed=True)[score].agg(["mean", "median", "count"])
     sns.boxplot(
-        data=data, x=category, y="clip_polarity", order=order, ax=ax,
+        data=data, x=category, y=score, order=order, ax=ax,
         palette="gist_earth", hue=category, dodge=False, legend=False,
     )
-    ax.set(title=title, xlabel=xlabel, ylabel="Average Clip Polarity" if left else "")
+    ax.set(title=title, xlabel=xlabel, ylabel=score_label if left else "")
     for i, name in enumerate(order):
         if name not in groups.index or not groups.loc[name, "count"]:
             continue
