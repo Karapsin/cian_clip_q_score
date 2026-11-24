@@ -191,7 +191,7 @@ def append_figures(document, directory, outline):
                 if len(figure) != 1:
                     raise ValueError(f"Expected one page in {path}")
                 outline.append([2, title, len(document) + 1])
-                if variant:
+                if variant or figure[0].search_for(title):
                     document.insert_pdf(figure)
                 else:
                     append_untitled_figure(document, figure, title)
